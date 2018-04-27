@@ -96,9 +96,15 @@ func logResults(results []kubeval.ValidationResult, success bool) bool {
 	for _, result := range results {
 		if len(result.Errors) > 0 {
 			success = false
-			log.Warn(fmt.Sprintf("The document %s contains an invalid kind %q", result.FileName, result.Kind))
+			log.Warn(fmt.Sprintf("The document %s contains an invalid kind %q:", result.FileName, result.Kind))
 			for _, desc := range result.Errors {
-				log.Info("--->", desc)
+				msg := fmt.Sprintf("* Field %s: %s", desc.Context().String(), desc.Description())
+				if p, ok := desc.Details()["property"]; ok {
+					if str, isString := p.(string); isString {
+						msg = fmt.Sprintf("* Field %s.%s: %s", desc.Context().String(), str, desc.Description())
+					}
+				}
+				log.Info(msg)
 			}
 		} else {
 			log.Success("The document", result.FileName, "contains a valid", result.Kind)
