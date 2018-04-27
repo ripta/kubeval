@@ -22,6 +22,10 @@ var Version string
 /// to either different github repo, or a local file
 var SchemaLocation string
 
+// ContinueOnError sets whether to die on first error, or continue
+// processing and only report at the end.
+var ContinueOnError = false
+
 // DefaultSchemaLocation is the default value for
 var DefaultSchemaLocation = "https://raw.githubusercontent.com/garethr"
 
@@ -124,7 +128,7 @@ func validateResource(data []byte, fileName string) (ValidationResult, error) {
 	result.FileName = fileName
 	err := yaml.Unmarshal(data, &spec)
 	if err != nil {
-		return result, errors.New("Failed to decode YAML from " + fileName)
+		return result, fmt.Errorf("Failed to decode YAML from %s: %+v", fileName, err)
 	}
 
 	body := convertToStringKeys(spec)
@@ -153,7 +157,7 @@ func validateResource(data []byte, fileName string) (ValidationResult, error) {
 
 	results, err := gojsonschema.Validate(schemaLoader, documentLoader)
 	if err != nil {
-		return result, fmt.Errorf("Problem loading schema from the network at %s: %s", schema, err)
+		return result, fmt.Errorf("Problem loading schema from %s: %+v", schema, err)
 	}
 
 	if results.Valid() {

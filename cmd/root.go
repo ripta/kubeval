@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/garethr/kubeval/kubeval"
 	"github.com/garethr/kubeval/log"
+
+	"github.com/hashicorp/go-multierror"
 )
 
 // RootCmd represents the the command to run when kubeval is run
@@ -57,6 +60,8 @@ var RootCmd = &cobra.Command{
 				log.Error("You must pass at least one file as an argument")
 				os.Exit(1)
 			}
+			results := make([]kubeval.ValidationResult, 0)
+			errs := &multierror.Error{}
 			for _, fileName := range args {
 				filePath, _ := filepath.Abs(fileName)
 				fileContents, err := ioutil.ReadFile(filePath)
@@ -64,12 +69,21 @@ var RootCmd = &cobra.Command{
 					log.Error("Could not open file", fileName)
 					os.Exit(1)
 				}
-				results, err := kubeval.Validate(fileContents, fileName)
-				if err != nil {
-					log.Error(err)
-					os.Exit(1)
+				if subs, err := kubeval.Validate(fileContents, fileName); err != nil {
+					if !kubeval.ContinueOnError {
+						log.Error(err)
+						os.Exit(1)
+					}
+					errs = multierror.Append(errs, err)
+				} else {
+					for _, result := range subs {
+						results = append(results, result)
+					}
 				}
-				success = logResults(results, success)
+			}
+			success = logResults(results, success)
+			if err := errs.ErrorOrNil(); err != nil {
+				log.Error(multierror.Flatten(errs))
 			}
 		}
 		if !success {
@@ -82,7 +96,7 @@ func logResults(results []kubeval.ValidationResult, success bool) bool {
 	for _, result := range results {
 		if len(result.Errors) > 0 {
 			success = false
-			log.Warn("The document", result.FileName, "contains an invalid", result.Kind)
+			log.Warn(fmt.Sprintf("The document %s contains an invalid kind %q", result.FileName, result.Kind))
 			for _, desc := range result.Errors {
 				log.Info("--->", desc)
 			}
@@ -107,6 +121,7 @@ func init() {
 	viper.AutomaticEnv()
 	RootCmd.Flags().StringVarP(&kubeval.Version, "kubernetes-version", "v", "master", "Version of Kubernetes to validate against")
 	RootCmd.Flags().StringVarP(&kubeval.SchemaLocation, "schema-location", "", kubeval.DefaultSchemaLocation, "Base URL used to download schemas. Can also be specified with the environment variable KUBEVAL_SCHEMA_LOCATION")
+	RootCmd.Flags().BoolVarP(&kubeval.ContinueOnError, "continue-on-error", "c", false, "Continue on errors and only report at the end")
 	RootCmd.Flags().BoolVarP(&kubeval.OpenShift, "openshift", "", false, "Use OpenShift schemas instead of upstream Kubernetes")
 	RootCmd.Flags().BoolVarP(&kubeval.Strict, "strict", "", false, "Disallow additional properties not in schema")
 	RootCmd.Flags().BoolVarP(&Version, "version", "", false, "Display the kubeval version information and exit")
